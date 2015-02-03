@@ -42,6 +42,8 @@ typedef struct area_t {
 #define N 20
 
 typedef struct area_stack_t {
+    int close_stack[N]; // Needed for nested areas and multiple commands per area
+    int close_top;
     int pos;
     area_t slot[N];
 } area_stack_t;
@@ -219,10 +221,10 @@ set_attribute (const char modifier, const char attribute)
 
 
 area_t *
-area_get (xcb_window_t win, const int x)
+area_get (xcb_window_t win, const int x, const int button)
 {
-    for (int i = 0; i < astack.pos; i++)
-        if (astack.slot[i].window == win && x >= astack.slot[i].begin && x < astack.slot[i].end)
+    for (int i = astack.pos - 1; i >= 0; i--)
+        if (astack.slot[i].window == win && x >= astack.slot[i].begin && x < astack.slot[i].end && astack.slot[i].button == button)
             return &astack.slot[i];
     return NULL;
 }
@@ -248,7 +250,7 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
 {
     char *p = str;
     char *trail;
-    area_t *a = &astack.slot[astack.pos];
+    area_t *a;
 
     if (astack.pos == N) {
         fprintf(stderr, "astack overflow!\n");
@@ -257,6 +259,9 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
 
     // A wild close area tag appeared!
     if (*p != ':') {
+        // Pop an area slot off the close stack
+        a = &astack.slot[astack.close_stack[--astack.close_top]];
+
         *end = p;
 
         // Basic safety checks
@@ -280,10 +285,10 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
                 break;
         }
 
-        astack.pos++;
-
         return true;
     }
+
+    a = &astack.slot[astack.pos];
 
     // Found the closing : and check if it's just an escaped one
     for (trail = strchr(++p, ':'); trail && trail[-1] == '\\'; trail = strchr(trail + 1, ':'))
@@ -314,6 +319,9 @@ area_add (char *str, const char *optend, char **end, monitor_t *mon, const int x
     a->button = button;
 
     *end = trail + 1;
+
+    // Push the top area-stack index onto the close stack
+    astack.close_stack[astack.close_top++] = astack.pos++;
 
     return true;
 }
@@ -1185,9 +1193,9 @@ main (int argc, char **argv)
                         case XCB_BUTTON_PRESS:
                             press_ev = (xcb_button_press_event_t *)ev;
                             {
-                                area_t *area = area_get(press_ev->event, press_ev->event_x);
+                                area_t *area = area_get(press_ev->event, press_ev->event_x, press_ev->detail);
                                 // Respond to the click
-                                if (area && area->button == press_ev->detail) {
+                                if (area) {
                                     write(STDOUT_FILENO, area->cmd, strlen(area->cmd));
                                     write(STDOUT_FILENO, "\n", 1);
                                 }
