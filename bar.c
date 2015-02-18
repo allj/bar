@@ -223,7 +223,7 @@ set_attribute (const char modifier, const char attribute)
 area_t *
 area_get (xcb_window_t win, const int x, const int button)
 {
-    for (int i = astack.pos - 1; i >= 0; i--)
+    for (int i = 0; i < astack.pos; i++)
         if (astack.slot[i].window == win && x >= astack.slot[i].begin && x < astack.slot[i].end && astack.slot[i].button == button)
             return &astack.slot[i];
     return NULL;
